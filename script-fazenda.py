@@ -31,10 +31,20 @@ def xpath_literal(value: str) -> str:
 
 def parse_payload() -> dict:
     parser = argparse.ArgumentParser(description="Fazenda Certificate Generator")
-    parser.add_argument("--payload", required=True, help="JSON payload")
+    parser.add_argument("--payload", required=False, help="JSON payload")
     args = parser.parse_args()
 
-    data = json.loads(args.payload)
+    if args.payload:
+        data = json.loads(args.payload)
+    else:
+        log("INFO", "No payload provided. Using default test payload.")
+        data = {
+            "tipo_pessoa": "Pessoa Física",
+            "documento": "12433377617",
+            "finalidade": "Junto ao GDF",
+            "tipo_certidao": "Certidão de Débitos",
+        }
+
     if not isinstance(data, dict):
         raise ValueError("Invalid payload: expected JSON object")
 
@@ -51,9 +61,6 @@ output_filename = f"Fazenda_Certificate_{payload['tipo_pessoa']}_{payload['docum
 captured_path = None
 captured_cookie = None
 blocked_by_debit = False
-
-os.environ.pop("WAYLAND_DISPLAY", None)
-os.environ["GDK_BACKEND"] = "x11"
 
 driver = Driver(uc=True, uc_cdp_events=True, headless=False, chromium_arg="--ozone-platform=x11")
 
