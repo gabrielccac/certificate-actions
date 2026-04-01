@@ -1,16 +1,16 @@
 import argparse
-import html
 import json
-import os
 import sys
 import time
-from curl_cffi import requests
+import requests
 from seleniumbase import Driver
 
 URL = "https://ww1.receita.fazenda.df.gov.br/cidadao/certidoes/Certidao"
 
+
 def log(level, message):
     print(f"[{level}] {message}", file=sys.stderr)
+
 
 def xpath_literal(value: str) -> str:
     """
@@ -29,9 +29,11 @@ def xpath_literal(value: str) -> str:
             elements.append("\"'\"")
     return "concat(" + ", ".join(elements) + ")"
 
+
 def parse_payload() -> dict:
-    parser = argparse.ArgumentParser(description="Fazenda Certificate Generator")
+    parser = argparse.ArgumentParser(description="Fazenda Turnstile Path Capturer")
     parser.add_argument("--payload", required=False, help="JSON payload")
+    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
     args = parser.parse_args()
 
     if args.payload:
@@ -53,10 +55,10 @@ def parse_payload() -> dict:
         if not str(data.get(key, "")).strip():
             raise ValueError(f"Invalid payload: '{key}' is required")
 
-    return {k: str(data[k]).strip() for k in required_keys}
+    return {k: str(data[k]).strip() for k in required_keys}, args.callback_url
 
-payload = parse_payload()
-output_filename = f"Fazenda_Certificate_{payload['tipo_pessoa']}_{payload['documento']}.pdf"
+
+payload, callback_url = parse_payload()
 
 captured_path = None
 captured_cookie = None
@@ -115,56 +117,32 @@ try:
 finally:
     driver.quit()
 
-result = {
-    "status": "timeout",
-    "filename": output_filename,
-    "message": "No matching request was captured.",
-    "pdf_size_bytes": None,
-}
+def send_callback(url: str, result: dict) -> None:
+    try:
+        resp = requests.post(url, json=result, timeout=15)
+        log("INFO", f"Callback sent (status {resp.status_code})")
+    except Exception as e:
+        log("ERROR", f"Callback failed: {e}")
+
 
 if blocked_by_debit:
-    result = {
-        "status": "blocked_by_debit",
-        "filename": None,
-        "message": "Certificate cannot be generated, there are debits",
-        "pdf_size_bytes": None,
-    }
+    log("ERROR", "Blocked by debit modal. No path captured.")
+    result = {"status": "blocked_by_debit", "path": None, "cookie": None}
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    if callback_url:
+        send_callback(callback_url, result)
+    sys.exit(1)
 elif captured_path and captured_cookie:
-    log("INFO", "Fetching PDF via capture match")
-    cf_clearance = next(
-        (p.strip().split("=", 1)[1] for p in captured_cookie.split(";") if p.strip().startswith("cf_clearance=")),
-        None,
-    )
-
-    if not cf_clearance:
-        result.update({
-            "status": "error",
-            "message": "cf_clearance cookie was not present in captured request.",
-        })
-    else:
-        full_url = "https://ww1.receita.fazenda.df.gov.br" + html.unescape(captured_path)
-        response = requests.get(
-            full_url,
-            headers={"Cookie": f"cf_clearance={cf_clearance}"},
-            impersonate="chrome",
-        )
-
-        if response.status_code == 200:
-            pdf_bytes = response.content or b""
-            result.update({
-                "status": "success",
-                "message": None,
-                "pdf_size_bytes": len(pdf_bytes),
-            })
-            log("INFO", "Success request status 200")
-        else:
-            result.update({
-                "status": "error",
-                "message": f"Turnstile replay failed: HTTP {response.status_code}",
-            })
-            log("ERROR", f"Request failed (status {response.status_code})")
+    log("INFO", "Path and cookie captured successfully.")
+    result = {"status": "success", "path": captured_path, "cookie": captured_cookie}
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    if callback_url:
+        send_callback(callback_url, result)
+    sys.exit(0)
 else:
     log("ERROR", "No matching request was captured.")
-
-print(json.dumps(result, ensure_ascii=False), flush=True)
-sys.exit(0 if result["status"] in ("success", "blocked_by_debit") else 1)
+    result = {"status": "timeout", "path": None, "cookie": None}
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    if callback_url:
+        send_callback(callback_url, result)
+    sys.exit(1)

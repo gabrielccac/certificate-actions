@@ -1,44 +1,53 @@
-import re
+import argparse
+import json
 import os
+import re
 import sys
-
+import requests
+from curl_cffi import requests as requests
 from seleniumbase import Driver
-from curl_cffi import requests
 
-# Configuration and Constants
-TRF1_PAGE_URL = "https://sistemas.trf1.jus.br/certidao/#/solicitacao" # TODO: Update this URL
-RECAPTCHA_CO = "aHR0cHM6Ly9zaXN0ZW1hcy50cmYxLmp1cy5icjo0NDM." # TODO: Update with your target reCAPTCHA 'co' parameter
+TRF1_PAGE_URL = "https://sistemas.trf1.jus.br/certidao/#/solicitacao"
+RECAPTCHA_CO = "aHR0cHM6Ly9zaXN0ZW1hcy50cmYxLmp1cy5icjo0NDM."
+
 
 def log(level, message):
     print(f"[{level}] {message}", file=sys.stderr)
 
-def configure_writable_driver_dir():
-    """
-    On some CI environments, seleniumbase needs a writable folder for drivers.
-    """
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="TRF1 reCAPTCHA Token Generator")
+    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
+    return parser.parse_args()
+
+
+def send_callback(url: str, result: dict) -> None:
+    try:
+        resp = requests.post(url, json=result, timeout=15)
+        log("INFO", f"Callback sent (status {resp.status_code})")
+    except Exception as e:
+        log("ERROR", f"Callback failed: {e}")
+
+
+def _get_recaptcha_token() -> str:
     os.environ["SELENIUMBASE_DIR"] = os.path.join(os.getcwd(), ".seleniumbase")
 
-def _get_recaptcha_token():
-    driver = None
-    page_source = ""
+    driver = Driver(uc=True, headless=False, no_sandbox=True, pls="eager")
     try:
-        configure_writable_driver_dir()
-        driver = Driver(uc=True, headless=False, no_sandbox=True, pls="eager")
         driver.get(TRF1_PAGE_URL)
         driver.wait_for_element_present("iframe[src*='recaptcha']", timeout=15)
         page_source = driver.page_source
         log("INFO", "Page loaded for reCAPTCHA extraction.")
     finally:
-        if driver:
-            try:
-                driver.quit()
-            except Exception:
-                pass
+        try:
+            driver.quit()
+        except Exception:
+            pass
 
     key_match = re.search(r'recaptcha/api2/anchor\?[^"]*?k=([A-Za-z0-9_-]+)', page_source)
     ver_match = re.search(r'recaptcha/api2/anchor\?[^"]*?v=([A-Za-z0-9_-]+)', page_source)
     if not key_match:
-        raise ValueError("reCAPTCHA key not found")
+        raise ValueError("reCAPTCHA key not found in page source")
 
     key = key_match.group(1)
     version = ver_match.group(1) if ver_match else ""
@@ -74,14 +83,23 @@ def _get_recaptcha_token():
     if not final_match:
         raise ValueError("reCAPTCHA reload token not found")
 
-    log("INFO", "reCAPTCHA token obtained.")
+    log("INFO", "reCAPTCHA token obtained successfully.")
     return final_match.group(1)
 
+
 if __name__ == "__main__":
-    # Execute the function and print the token so it can be seen or captured
+    args = parse_args()
     try:
         token = _get_recaptcha_token()
-        print(f"Obtained Token:\n{token}")
+        result = {"status": "success", "token": token}
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        if args.callback_url:
+            send_callback(args.callback_url, result)
+        sys.exit(0)
     except Exception as e:
         log("ERROR", f"Failed to get token: {e}")
+        result = {"status": "error", "token": None}
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        if args.callback_url:
+            send_callback(args.callback_url, result)
         sys.exit(1)

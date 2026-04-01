@@ -7,18 +7,28 @@ on:
   pull_request:
     branches:
       - main
-#   schedule:
-    # Run once a day at midnight UTC (optional)
-    # - cron: '0 0 * * *'
-  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      script:
+        description: 'Script to run'
+        required: true
+        type: choice
+        options:
+          - capture-trf1
+          - capture-receita
+          - capture-fazenda
+      payload:
+        description: 'JSON payload (required for script-fazenda)'
+        required: false
+        default: ''
+      callback_url:
+        description: 'Callback URL to POST the result to'
+        required: false
+        default: ''
 
 jobs:
   run-script:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -27,7 +37,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # Specify the Python version you need
+          python-version: '3.12'
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -36,17 +46,18 @@ jobs:
           cache-dependency-glob: '.github/workflows/main.yml'
 
       - name: Install dependencies
-        run: |
-          uv pip install --system seleniumbase curl-cffi
+        run: uv pip install --system seleniumbase curl-cffi requests
 
-      - name: Install xvfb (Linux)
-        if: runner.os == 'Linux'
+      - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run script (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run python script-fazenda.py
-
-      - name: Run script (Windows)
-        if: runner.os == 'Windows'
-        run: python script-fazenda.py
+      - name: Run script
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.payload }}" ]; then
+            ARGS="$ARGS --payload '${{ github.event.inputs.payload }}'"
+          fi
+          if [ -n "${{ github.event.inputs.callback_url }}" ]; then
+            ARGS="$ARGS --callback-url '${{ github.event.inputs.callback_url }}'"
+          fi
+          xvfb-run python ${{ github.event.inputs.script }}.py $ARGS

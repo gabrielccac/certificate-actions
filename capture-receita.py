@@ -5,21 +5,14 @@ hCaptcha token generator for Receita Federal using SeleniumBase CDP Chrome.
 Install deps:
   pip install seleniumbase requests
 """
+import argparse
 import asyncio
+import json
 import sys
 import requests
 from seleniumbase import cdp_driver
 
-# Configuration and Constants
 URL = "https://servicos.receitafederal.gov.br/servico/certidoes/#/home/cpf"
-VALIDATE_URL = "https://servicos.receitafederal.gov.br/servico/certidoes/api/Emissao/verificar"
-VALIDATE_BODY = {
-    "ni": "12433377617",
-    "tipoContribuinte": "PF",
-    "dataNascimento": "2002-05-23",
-    "tipoContribuinteEnum": "CPF",
-}
-
 ERRO_CAPTCHA_MARKER = "erro-captcha"
 
 JS_START_TOKEN_EXECUTION = """
@@ -81,7 +74,6 @@ async def _generate_token() -> str | None:
         await page.select("[data-hcaptcha-widget-id]", timeout=30)
         log("INFO", "hCaptcha widget found.")
 
-        # Wait until the hcaptcha object is available before execution.
         for _ in range(60):
             hcaptcha_ready = await page.evaluate("typeof hcaptcha !== 'undefined'")
             if hcaptcha_ready:
@@ -116,40 +108,44 @@ async def _generate_token() -> str | None:
         return None
     finally:
         driver.stop(deconstruct=True)
-        # Give subprocess transports a brief moment to flush on Windows.
         await asyncio.sleep(0.2)
 
 
-def validate_token(token: str) -> int:
-    log("INFO", "Sending validation request.")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Receita Federal hCaptcha Token Generator")
+    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
+    return parser.parse_args()
+
+
+def send_callback(callback_url: str, result: dict) -> None:
     try:
-        resp = requests.post(
-            VALIDATE_URL,
-            json=VALIDATE_BODY,
-            headers={
-                "x-captcha-token": token,
-                "accept": "application/json, text/plain, */*",
-                "content-type": "application/json",
-            },
-            timeout=30,
-        )
-        log("INFO", f"Validation status: {resp.status_code}")
-        log("INFO", f"Validation body: {resp.text[:400]}")
-        return 0 if 200 <= resp.status_code < 300 else 1
-    except requests.RequestException as err:
-        log("ERROR", f"Validation request failed: {err}")
-        return 1
+        resp = requests.post(callback_url, json=result, timeout=15)
+        log("INFO", f"Callback sent (status {resp.status_code})")
+    except Exception as e:
+        log("ERROR", f"Callback failed: {e}")
 
 
 if __name__ == "__main__":
+    args = parse_args()
     try:
         token = asyncio.run(_generate_token())
         if token:
-            print(f"Obtained Token:\n{token}")
-            exit(validate_token(token))
+            result = {"status": "success", "token": token}
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            if args.callback_url:
+                send_callback(args.callback_url, result)
+            sys.exit(0)
         else:
             log("ERROR", "Token generation failed.")
-            exit(1)
+            result = {"status": "error", "token": None}
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            if args.callback_url:
+                send_callback(args.callback_url, result)
+            sys.exit(1)
     except Exception as e:
-        log("ERROR", f"Failed to get token: {e}")
-        exit(1)
+        log("ERROR", f"Unexpected error: {e}")
+        result = {"status": "error", "token": None}
+        print(json.dumps(result, ensure_ascii=False), flush=True)
+        if args.callback_url:
+            send_callback(args.callback_url, result)
+        sys.exit(1)
