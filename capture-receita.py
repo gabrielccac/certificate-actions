@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import sys
+import os
 import requests
 from seleniumbase import cdp_driver
 
@@ -111,10 +112,14 @@ async def _generate_token() -> str | None:
         await asyncio.sleep(0.2)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Receita Federal hCaptcha Token Generator")
-    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
-    return parser.parse_args()
+def get_callback_url():
+    callback_url = os.environ.get("RAW_CALLBACK")
+    if not callback_url:
+        parser = argparse.ArgumentParser(description="Receita Federal hCaptcha Token Generator")
+        parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
+        args, _ = parser.parse_known_args()
+        callback_url = args.callback_url
+    return callback_url
 
 
 def send_callback(callback_url: str, result: dict) -> None:
@@ -126,26 +131,26 @@ def send_callback(callback_url: str, result: dict) -> None:
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    callback_url = get_callback_url()
     try:
         token = asyncio.run(_generate_token())
         if token:
             result = {"status": "success", "token": token}
             print(json.dumps(result, ensure_ascii=False), flush=True)
-            if args.callback_url:
-                send_callback(args.callback_url, result)
+            if callback_url:
+                send_callback(callback_url, result)
             sys.exit(0)
         else:
             log("ERROR", "Token generation failed.")
             result = {"status": "error", "token": None}
             print(json.dumps(result, ensure_ascii=False), flush=True)
-            if args.callback_url:
-                send_callback(args.callback_url, result)
+            if callback_url:
+                send_callback(callback_url, result)
             sys.exit(1)
     except Exception as e:
         log("ERROR", f"Unexpected error: {e}")
         result = {"status": "error", "token": None}
         print(json.dumps(result, ensure_ascii=False), flush=True)
-        if args.callback_url:
-            send_callback(args.callback_url, result)
+        if callback_url:
+            send_callback(callback_url, result)
         sys.exit(1)

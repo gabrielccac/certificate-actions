@@ -50,6 +50,4 @@ jobs:
           RAW_PAYLOAD: ${{ github.event.inputs.payload }}
           RAW_CALLBACK: ${{ github.event.inputs.callback_url }}
         run: |
-          # We don't pass $RAW_PAYLOAD in the command line anymore
-          # This prevents the shell from ever "touching" the JSON string
           xvfb-run python ${{ github.event.inputs.script }}.py

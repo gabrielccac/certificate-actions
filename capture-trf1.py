@@ -15,10 +15,14 @@ def log(level, message):
     print(f"[{level}] {message}", file=sys.stderr)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="TRF1 reCAPTCHA Token Generator")
-    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
-    return parser.parse_args()
+def get_callback_url():
+    callback_url = os.environ.get("RAW_CALLBACK")
+    if not callback_url:
+        parser = argparse.ArgumentParser(description="TRF1 reCAPTCHA Token Generator")
+        parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
+        args, _ = parser.parse_known_args()
+        callback_url = args.callback_url
+    return callback_url
 
 
 def send_callback(url: str, result: dict) -> None:
@@ -30,8 +34,6 @@ def send_callback(url: str, result: dict) -> None:
 
 
 def _get_recaptcha_token() -> str:
-    os.environ["SELENIUMBASE_DIR"] = os.path.join(os.getcwd(), ".seleniumbase")
-
     driver = Driver(uc=True, headless=False, no_sandbox=True, pls="eager")
     try:
         driver.get(TRF1_PAGE_URL)
@@ -88,18 +90,18 @@ def _get_recaptcha_token() -> str:
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    callback_url = get_callback_url()
     try:
         token = _get_recaptcha_token()
         result = {"status": "success", "token": token}
         print(json.dumps(result, ensure_ascii=False), flush=True)
-        if args.callback_url:
-            send_callback(args.callback_url, result)
+        if callback_url:
+            send_callback(callback_url, result)
         sys.exit(0)
     except Exception as e:
         log("ERROR", f"Failed to get token: {e}")
         result = {"status": "error", "token": None}
         print(json.dumps(result, ensure_ascii=False), flush=True)
-        if args.callback_url:
-            send_callback(args.callback_url, result)
+        if callback_url:
+            send_callback(callback_url, result)
         sys.exit(1)
