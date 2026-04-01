@@ -3,7 +3,6 @@ import os
 import sys
 
 from seleniumbase import Driver
-from curl_cffi import requests
 
 # Configuration and Constants
 TRF1_PAGE_URL = "https://sistemas.trf1.jus.br/certidao/#/solicitacao" # TODO: Update this URL
