@@ -45,8 +45,8 @@ jobs:
 
       - name: Run script (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run python script-receita.py
+        run: xvfb-run python script-fazenda.py
 
       - name: Run script (Windows)
         if: runner.os == 'Windows'
-        run: python script-receita.py
+        run: python script-fazenda.py
