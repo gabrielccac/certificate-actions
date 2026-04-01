@@ -141,21 +141,21 @@ def send_callback(url: str, result: dict) -> None:
 
 if blocked_by_debit:
     log("ERROR", "Blocked by debit modal. No path captured.")
-    result = {"status": "blocked_by_debit", "path": None, "cookie": None}
+    result = {"status": "blocked_by_debit", "path": None, "cookie": None, "payload": payload}
     print(json.dumps(result, ensure_ascii=False), flush=True)
     if callback_url:
         send_callback(callback_url, result)
     sys.exit(1)
 elif captured_path and captured_cookie:
     log("INFO", "Path and cookie captured successfully.")
-    result = {"status": "success", "path": captured_path, "cookie": captured_cookie}
+    result = {"status": "success", "path": captured_path, "cookie": captured_cookie, "payload": payload}
     print(json.dumps(result, ensure_ascii=False), flush=True)
     if callback_url:
         send_callback(callback_url, result)
     sys.exit(0)
 else:
     log("ERROR", "No matching request was captured.")
-    result = {"status": "timeout", "path": None, "cookie": None}
+    result = {"status": "timeout", "path": None, "cookie": None, "payload": payload}
     print(json.dumps(result, ensure_ascii=False), flush=True)
     if callback_url:
         send_callback(callback_url, result)
