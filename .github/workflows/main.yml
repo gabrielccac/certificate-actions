@@ -1,12 +1,6 @@
 name: Run Python Script
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       script:
@@ -51,13 +45,15 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run script
+      - name: Trigger script
         run: |
           ARGS=""
           if [ -n "${{ github.event.inputs.payload }}" ]; then
             ARGS="$ARGS --payload '${{ github.event.inputs.payload }}'"
           fi
+          
           if [ -n "${{ github.event.inputs.callback_url }}" ]; then
             ARGS="$ARGS --callback-url '${{ github.event.inputs.callback_url }}'"
           fi
+          
           xvfb-run python ${{ github.event.inputs.script }}.py $ARGS
