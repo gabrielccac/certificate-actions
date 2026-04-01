@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 import time
 import requests
@@ -31,13 +32,26 @@ def xpath_literal(value: str) -> str:
 
 
 def parse_payload() -> dict:
-    parser = argparse.ArgumentParser(description="Fazenda Turnstile Path Capturer")
-    parser.add_argument("--payload", required=False, help="JSON payload")
-    parser.add_argument("--callback-url", required=False, help="URL to POST the result JSON to")
-    args = parser.parse_args()
+    # 1. Try to get data from Environment Variables (set by GitHub Actions)
+    payload_str = os.environ.get("RAW_PAYLOAD")
+    callback_url = os.environ.get("RAW_CALLBACK")
 
-    if args.payload:
-        data = json.loads(args.payload)
+    # 2. Fallback to Argparse (if you want to run it manually on your PC)
+    if not payload_str:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--payload", required=False)
+        parser.add_argument("--callback-url", required=False)
+        args = parser.parse_args()
+        payload_str = args.payload
+        callback_url = callback_url or args.callback_url
+
+    # 3. Process the string
+    if payload_str:
+        try:
+            data = json.loads(payload_str)
+        except json.JSONDecodeError as e:
+            log("ERROR", f"Failed to parse JSON: {e}")
+            raise
     else:
         log("INFO", "No payload provided. Using default test payload.")
         data = {
@@ -55,7 +69,7 @@ def parse_payload() -> dict:
         if not str(data.get(key, "")).strip():
             raise ValueError(f"Invalid payload: '{key}' is required")
 
-    return {k: str(data[k]).strip() for k in required_keys}, args.callback_url
+    return {k: str(data[k]).strip() for k in required_keys}, callback_url
 
 
 payload, callback_url = parse_payload()

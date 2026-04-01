@@ -46,14 +46,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Trigger script
+        env:
+          RAW_PAYLOAD: ${{ github.event.inputs.payload }}
+          RAW_CALLBACK: ${{ github.event.inputs.callback_url }}
         run: |
-          ARGS=""
-          if [ -n "${{ github.event.inputs.payload }}" ]; then
-            ARGS="$ARGS --payload '${{ github.event.inputs.payload }}'"
-          fi
-          
-          if [ -n "${{ github.event.inputs.callback_url }}" ]; then
-            ARGS="$ARGS --callback-url '${{ github.event.inputs.callback_url }}'"
-          fi
-          
-          xvfb-run python ${{ github.event.inputs.script }}.py $ARGS
+          # We don't pass $RAW_PAYLOAD in the command line anymore
+          # This prevents the shell from ever "touching" the JSON string
+          xvfb-run python ${{ github.event.inputs.script }}.py
